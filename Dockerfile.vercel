@@ -4,25 +4,24 @@ WORKDIR /app
 
 COPY . /app
 
+RUN install-php-extensions pdo_mysql
+
 RUN apt-get update \
     && apt-get install -y \
         git \
         unzip \
-        libzip-dev \
-    && docker-php-ext-install pdo_mysql zip \
     && php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
     && php composer-setup.php --install-dir=/usr/local/bin --filename=composer \
     && rm composer-setup.php \
     && composer install --no-dev --optimize-autoloader
 
-RUN mkdir -p storage/framework/cache \
-    storage/framework/sessions \
-    storage/framework/views \
-    bootstrap/cache \
+RUN mkdir -p \
+        storage/framework/cache \
+        storage/framework/sessions \
+        storage/framework/views \
+        bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
 
-RUN php artisan storage:link || true
+EXPOSE 80
 
-EXPOSE 8080
-
-CMD ["php", "artisan", "octane:frankenphp", "--host=0.0.0.0", "--port=8080"]
+CMD ["frankenphp", "php-server", "-r", "public/"]
