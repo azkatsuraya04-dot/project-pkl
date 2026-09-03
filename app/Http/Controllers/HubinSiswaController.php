@@ -5,29 +5,125 @@ namespace App\Http\Controllers;
 use App\Models\Siswa;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 
 class HubinSiswaController extends Controller
 {
-    public function index()
-    {
-        $siswa = Siswa::with('user')
-            ->orderBy('nama_siswa')
-            ->get();
+    /*
+    |--------------------------------------------------------------------------
+    | Tampilkan Data Siswa
+    |--------------------------------------------------------------------------
+    */
 
-        return view('hubin.siswa', compact('siswa'));
+    public function index(Request $request)
+    {
+        $search = $request->input('search');
+        $status = $request->input('status');
+
+        $siswaQuery = Siswa::with([
+            'user',
+            'pengajuan.perusahaan',
+            'pengajuan.pkl'
+        ])->orderBy('nama_siswa');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Search Nama Siswa
+        |--------------------------------------------------------------------------
+        */
+
+        if ($search) {
+            $siswaQuery->where(
+                'nama_siswa',
+                'like',
+                '%' . $search . '%'
+            );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Filter Status PKL
+        |--------------------------------------------------------------------------
+        */
+
+        if ($status) {
+            $siswaQuery->whereHas(
+                'pengajuan.pkl',
+                function ($query) use ($status) {
+                    $query->where(
+                        'status',
+                        $status
+                    );
+                }
+            );
+        }
+
+        $siswa = $siswaQuery->get();
+
+        return view(
+            'hubin.siswa',
+            compact(
+                'siswa',
+                'search',
+                'status'
+            )
+        );
     }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Tambah Siswa
+    |--------------------------------------------------------------------------
+    */
 
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'nama_siswa' => ['required', 'string', 'max:100'],
-            'nis' => ['required', 'string', 'max:20', 'unique:siswa,nis'],
-            'kelas' => ['required', 'string', 'max:20'],
-            'jurusan' => ['required', 'string', 'max:50'],
-            'email' => ['required', 'email', 'max:100', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:8'],
+            'nama_siswa' => [
+                'required',
+                'string',
+                'max:100'
+            ],
+
+            'nis' => [
+                'required',
+                'string',
+                'max:20',
+                'unique:siswa,nis'
+            ],
+
+            'kelas' => [
+                'required',
+                'string',
+                'max:20'
+            ],
+
+            'jurusan' => [
+                'required',
+                'string',
+                'max:50'
+            ],
+
+            'email' => [
+                'required',
+                'email',
+                'max:100',
+                'unique:users,email'
+            ],
+
+            'password' => [
+                'required',
+                'string',
+                'min:8'
+            ],
         ]);
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Buat User
+        |--------------------------------------------------------------------------
+        */
 
         $user = User::create([
             'name' => $validated['nama_siswa'],
@@ -35,6 +131,13 @@ class HubinSiswaController extends Controller
             'password' => $validated['password'],
             'role' => 'siswa',
         ]);
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Buat Data Siswa
+        |--------------------------------------------------------------------------
+        */
 
         Siswa::create([
             'id_user' => $user->id,
@@ -44,38 +147,69 @@ class HubinSiswaController extends Controller
             'jurusan' => $validated['jurusan'],
         ]);
 
+
         return back()->with(
             'success',
             'Data siswa berhasil ditambahkan.'
         );
     }
 
-    public function update(Request $request, Siswa $siswa)
-    {
+
+    /*
+    |--------------------------------------------------------------------------
+    | Update Siswa
+    |--------------------------------------------------------------------------
+    */
+
+    public function update(
+        Request $request,
+        Siswa $siswa
+    ) {
         $validated = $request->validate([
-            'nama_siswa' => ['required', 'string', 'max:100'],
+            'nama_siswa' => [
+                'required',
+                'string',
+                'max:100'
+            ],
+
             'nis' => [
                 'required',
                 'string',
                 'max:20',
-                'unique:siswa,nis,' . $siswa->id_siswa . ',id_siswa',
+                'unique:siswa,nis,' .
+                $siswa->id_siswa .
+                ',id_siswa'
             ],
-            'kelas' => ['required', 'string', 'max:20'],
-            'jurusan' => ['required', 'string', 'max:50'],
+
+            'kelas' => [
+                'required',
+                'string',
+                'max:20'
+            ],
+
+            'jurusan' => [
+                'required',
+                'string',
+                'max:50'
+            ],
+
             'email' => [
                 'required',
                 'email',
                 'max:100',
-                'unique:users,email,' . $siswa->id_user,
+                'unique:users,email,' .
+                $siswa->id_user
             ],
         ]);
 
+
         $siswa->update([
-            'nis' => $validated['nis'],
             'nama_siswa' => $validated['nama_siswa'],
+            'nis' => $validated['nis'],
             'kelas' => $validated['kelas'],
             'jurusan' => $validated['jurusan'],
         ]);
+
 
         if ($siswa->user) {
             $siswa->user->update([
@@ -84,14 +218,28 @@ class HubinSiswaController extends Controller
             ]);
         }
 
+
         return back()->with(
             'success',
             'Data siswa berhasil diperbarui.'
         );
     }
 
+
+    /*
+    |--------------------------------------------------------------------------
+    | Hapus Siswa
+    |--------------------------------------------------------------------------
+    */
+
     public function destroy(Siswa $siswa)
     {
+        /*
+        |--------------------------------------------------------------------------
+        | Jangan hapus siswa yang sudah punya pengajuan
+        |--------------------------------------------------------------------------
+        */
+
         if ($siswa->pengajuan()->exists()) {
             return back()->with(
                 'error',
@@ -99,13 +247,17 @@ class HubinSiswaController extends Controller
             );
         }
 
+
         $user = $siswa->user;
 
+
         $siswa->delete();
+
 
         if ($user) {
             $user->delete();
         }
+
 
         return back()->with(
             'success',

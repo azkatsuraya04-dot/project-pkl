@@ -2,49 +2,163 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Pkl;
 use App\Models\Nilai;
-use App\Models\Pembimbing;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class PembimbingController extends Controller
 {
-    public function dashboard()
+    /*
+    |--------------------------------------------------------------------------
+    | Dashboard Pembimbing
+    |--------------------------------------------------------------------------
+    */
+
+    public function dashboard(Request $request)
     {
+        $search = $request->input('search');
+        $status = $request->input('status');
+
         $pembimbing = Auth::user()->pembimbing;
 
-        $pkl = $pembimbing->pkl()
-            ->with([
+
+        /*
+        |--------------------------------------------------------------------------
+        | Query Siswa Bimbingan
+        |--------------------------------------------------------------------------
+        */
+
+        $pklQuery = Pkl::with([
+            'pengajuan.siswa',
+            'pengajuan.perusahaan',
+            'nilai'
+        ])->where(
+            'id_pembimbing',
+            $pembimbing->id_pembimbing
+        );
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Search Nama Siswa
+        |--------------------------------------------------------------------------
+        */
+
+        if ($search) {
+            $pklQuery->whereHas(
                 'pengajuan.siswa',
-                'pengajuan.perusahaan',
-                'nilai',
-            ])
+                function ($query) use ($search) {
+                    $query->where(
+                        'nama_siswa',
+                        'like',
+                        '%' . $search . '%'
+                    );
+                }
+            );
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Filter Status PKL
+        |--------------------------------------------------------------------------
+        */
+
+        if ($status) {
+            $pklQuery->where(
+                'status',
+                $status
+            );
+        }
+
+
+        $pkl = $pklQuery
+            ->latest('id_pkl')
             ->get();
 
-        return view('pembimbing.dashboard', compact(
-            'pembimbing',
-            'pkl'
-        ));
+
+        return view(
+            'pembimbing.dashboard',
+            compact(
+                'pembimbing',
+                'pkl',
+                'search',
+                'status'
+            )
+        );
     }
 
-    public function nilai(Request $request, $id_pkl)
-    {
-        $request->validate([
-            'nilai' => ['required', 'numeric', 'min:0', 'max:100'],
-            'catatan' => ['nullable', 'string'],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Input Nilai
+    |--------------------------------------------------------------------------
+    */
+
+    public function nilai(
+        Request $request,
+        $id_pkl
+    ) {
+        $validated = $request->validate([
+            'nilai' => [
+                'required',
+                'numeric',
+                'min:0',
+                'max:100'
+            ],
+
+            'catatan' => [
+                'nullable',
+                'string'
+            ],
         ]);
+
+
+        $pkl = Pkl::where(
+            'id_pkl',
+            $id_pkl
+        )->firstOrFail();
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Pastikan PKL milik pembimbing yang login
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $pkl->id_pembimbing
+            !== Auth::user()->pembimbing->id_pembimbing
+        ) {
+            abort(
+                403,
+                'Kamu tidak memiliki akses ke data siswa ini.'
+            );
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Simpan / Update Nilai
+        |--------------------------------------------------------------------------
+        */
 
         Nilai::updateOrCreate(
             [
-                'id_pkl' => $id_pkl,
+                'id_pkl' => $pkl->id_pkl
             ],
             [
-                'nilai' => $request->nilai,
-                'catatan' => $request->catatan,
+                'nilai' => $validated['nilai'],
+                'catatan' => $validated['catatan'] ?? null,
                 'tanggal_input' => now()->toDateString(),
             ]
         );
 
-        return back()->with('success', 'Nilai berhasil disimpan.');
+
+        return back()->with(
+            'success',
+            'Nilai siswa berhasil disimpan.'
+        );
     }
 }

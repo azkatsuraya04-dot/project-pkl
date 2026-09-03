@@ -6,22 +6,51 @@ use App\Models\Pengajuan;
 use App\Models\Siswa;
 use App\Models\Perusahaan;
 use App\Models\Pkl;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class KaprogController extends Controller
 {
-    public function dashboard()
+    public function dashboard(Request $request)
     {
-        $pengajuan = Pengajuan::with([
-            'siswa',
-            'perusahaan'
-        ])
-        ->latest('id_pengajuan')
-        ->get();
+        $search = $request->input('search');
+        $status = $request->input('status');
 
         /*
         |--------------------------------------------------------------------------
-        | STATISTIK
+        | Data Pengajuan
+        |--------------------------------------------------------------------------
+        */
+
+        $pengajuanQuery = Pengajuan::with([
+            'siswa',
+            'perusahaan',
+            'pkl'
+        ])->latest('id_pengajuan');
+
+        // Search berdasarkan nama siswa
+        if ($search) {
+            $pengajuanQuery->whereHas('siswa', function ($query) use ($search) {
+                $query->where(
+                    'nama_siswa',
+                    'like',
+                    '%' . $search . '%'
+                );
+            });
+        }
+
+        // Filter berdasarkan status PKL
+        if ($status) {
+            $pengajuanQuery->whereHas('pkl', function ($query) use ($status) {
+                $query->where('status', $status);
+            });
+        }
+
+        $pengajuan = $pengajuanQuery->get();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Statistik
         |--------------------------------------------------------------------------
         */
 
@@ -43,10 +72,9 @@ class KaprogController extends Controller
             'selesai'
         )->count();
 
-
         /*
         |--------------------------------------------------------------------------
-        | JUMLAH SISWA PER PERUSAHAAN
+        | Jumlah Siswa per Perusahaan
         |--------------------------------------------------------------------------
         */
 
@@ -65,7 +93,9 @@ class KaprogController extends Controller
             )
             ->select(
                 'perusahaan.nama_perusahaan',
-                DB::raw('COUNT(siswa.id_siswa) as jumlah_siswa')
+                DB::raw(
+                    'COUNT(siswa.id_siswa) as jumlah_siswa'
+                )
             )
             ->where(
                 'pengajuan.status_perusahaan',
@@ -78,23 +108,33 @@ class KaprogController extends Controller
             ->orderByDesc('jumlah_siswa')
             ->get();
 
-
-        return view('kaprog.dashboard', compact(
-            'pengajuan',
-            'totalSiswa',
-            'totalPerusahaan',
-            'totalPengajuan',
-            'totalPKL',
-            'pklBerlangsung',
-            'pklSelesai',
-            'siswaPerPerusahaan'
-        ));
+        return view(
+            'kaprog.dashboard',
+            compact(
+                'pengajuan',
+                'totalSiswa',
+                'totalPerusahaan',
+                'totalPengajuan',
+                'totalPKL',
+                'pklBerlangsung',
+                'pklSelesai',
+                'siswaPerPerusahaan',
+                'search',
+                'status'
+            )
+        );
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Setujui Pengajuan
+    |--------------------------------------------------------------------------
+    */
 
     public function setujui(Pengajuan $pengajuan)
     {
         $pengajuan->update([
-            'status_kaprog' => 'disetujui',
+            'status_kaprog' => 'disetujui'
         ]);
 
         return back()->with(
@@ -103,10 +143,16 @@ class KaprogController extends Controller
         );
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Tolak Pengajuan
+    |--------------------------------------------------------------------------
+    */
+
     public function tolak(Pengajuan $pengajuan)
     {
         $pengajuan->update([
-            'status_kaprog' => 'ditolak',
+            'status_kaprog' => 'ditolak'
         ]);
 
         return back()->with(
